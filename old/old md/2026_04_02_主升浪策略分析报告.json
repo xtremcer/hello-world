@@ -1,0 +1,41 @@
+{
+  "report_date": "2026-04-02",
+  "report_type": "主升浪策略分析",
+  "trading_status": "休市日",
+  "stocks": [
+    {
+      "code": "600711",
+      "name": "盛屯矿业",
+      "main_type": "短线游资",
+      "industry": "能源金属",
+      "analysis": {
+        "trend": {
+          "signal": null,
+          "qualified": null,
+          "source": "缺失",
+          "note": "akshare无此接口"
+        },
+        "main_chip": {
+          "main_cost": null,
+          "main_profit_ratio": null,
+          "main_chip_shape": null,
+          "qualified": null,
+          "source": "缺失",
+          "note": "akshare无免费接口"
+        },
+        "market_chip": {
+          "market_avg_cost": null,
+          "market_profit_ratio": null,
+          "chip_concentration": null,
+          "chip_shape": null,
+          "qualified": null,
+          "source": "缺失",
+          "note": "akshare暂无此接口"
+        },
+        "fund_flow": {
+          "net_inflow_3d": 12.33,
+          "avg_ratio_3d": 0,
+          "qualified": false,
+          "detail_5d": [
+            {
+              "日期": 

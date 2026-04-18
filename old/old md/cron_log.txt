@@ -1,0 +1,4 @@
+✅ 当日MD报告已生成：/mnt/nas/stock/2026-04-10_股票分析报告.md
+✅ 运行日志已追加：/mnt/nas/stock/run_log.txt
+✅ 当日MD报告已生成：/mnt/nas/stock/2026-04-11_股票分析报告.md
+✅ 运行日志已追加：/mnt/nas/stock/run_log.txt
