@@ -11,7 +11,9 @@ DEFAULT_STOCK = {
 STOCK_LIST = [DEFAULT_STOCK.copy()]
 
 # 输出目录配置（所有报告输出到指定目录）
-OUTPUT_DIR_DEFAULT = "/home/xtremcer/nas/stock/data"
+# 默认输出到当前项目目录下的 data/ 文件夹
+# 使用相对路径，确保生成的文件保存在本项目内，不干扰原项目
+OUTPUT_DIR_DEFAULT = "./data"
 
 # 板块资金排名阈值（买入信号：前10）
 BLOCK_RANK_THRESHOLD = 10
