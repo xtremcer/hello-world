@@ -12,8 +12,8 @@ import os
 # 目标股票代码
 STOCK1 = "600711"  # 盛屯矿业
 STOCK2 = "002240"  # 盛新锂能
-# NAS存储目录（已适配权限）
-NAS_STOCK_DIR = "/home/xtremcer/nas/stock/data"
+# 输出目录（当前项目下的data文件夹）
+NAS_STOCK_DIR = "./data"
 # =================================================================
 
 def get_market(code):
