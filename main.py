@@ -123,8 +123,40 @@ def main():
             trading_status = "休市日"
             print(f"⚠️ {target_date} 为{reason}，报告内容将包含海外市场信息...")
         else:
-            trading_status = "交易日"
-            print(f"✅ {target_date} 为交易日，报告内容将包含A股分析...")
+            # 交易日历判断为交易日，再通过实际数据验证最新日期
+            # 如果最新数据日期不等于目标日期，说明今天休市（数据未更）
+            print(f"✅ {target_date} 交易日历判断为交易日，正在验证数据是否更新...")
+            try:
+                import baostock as bs
+                from utils.baostock_utils import get_trend_data
+                # 用默认股票验证数据是否更新
+                test_code = DEFAULT_STOCK["code"].replace("sh.", "").replace("sz.", "")
+                test_market = "sh" if test_code.startswith("6") else "sz"
+                df, error = get_trend_data(test_code, test_market)
+                if df is not None and not df.empty:
+                    latest_date = df.iloc[-1]['date']
+                    # latest_date 是 datetime 对象
+                    if hasattr(latest_date, 'date'):
+                        latest_date = latest_date.date()
+                    else:
+                        latest_date = datetime.date.fromisoformat(str(latest_date).split()[0])
+
+                    if latest_date != target_date:
+                        # 最新数据日期不等于目标日期，判定为休市
+                        trading_status = "休市日"
+                        print(f"⚠️ 数据验证失败：最新数据日期为 {latest_date}，目标日期为 {target_date}，数据未更新，判定为休市...")
+                        reason = f"数据未更新（最新日期：{latest_date}）"
+                    else:
+                        trading_status = "交易日"
+                        print(f"✅ 数据验证通过：最新数据日期 {latest_date} 与目标日期一致，确认是交易日...")
+                else:
+                    # 获取数据失败，保持原判断
+                    trading_status = "交易日"
+                    print(f"⚠️ 数据验证失败：{error}，保持交易日判断...")
+            except Exception as e:
+                # 验证出错，保持原判断
+                trading_status = "交易日"
+                print(f"⚠️ 数据验证异常：{str(e)}，保持交易日判断...")
     else:
         trading_status = "交易日"  # 强制运行视为交易日
         print(f"⚠️ 强制运行模式，视为交易日...")
@@ -155,7 +187,7 @@ def main():
     stock_data_content = ""
     json_results = {
         "report_date": today_date,
-        "report_type": "主升浪策略分析",
+        "report_type": "主升浪策略分析" if trading_status == "交易日" else "A股休市简报",
         "trading_status": trading_status,
         "stocks": []
     }
