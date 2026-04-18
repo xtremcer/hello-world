@@ -361,7 +361,7 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
             if idx_data['change']:
                 try:
                     changes.append(float(idx_data['change']))
-                except:
+                except (ValueError, TypeError):
                     pass
 
         if changes:
