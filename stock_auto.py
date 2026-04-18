@@ -88,8 +88,8 @@ def main():
     """主函数：生成当日MD报告 + 追加运行日志"""
     # 1. 生成当日日期（仅日期，格式：YYYY-MM-DD，无时间）
     today_date = datetime.date.today().strftime("%Y_%m_%d")
-    # 2. 定义文件路径
-    md_report_name = f"{today_date}_股票分析报告.md"
+    # 2. 定义文件路径 - 文件名保持与主程序统一规则
+    md_report_name = f"{today_date}_主升浪策略分析报告.md"
     md_report_path = os.path.join(NAS_STOCK_DIR, md_report_name)
     run_log_path = os.path.join(NAS_STOCK_DIR, "run_log.txt")
     
