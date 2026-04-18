@@ -502,3 +502,99 @@ def get_price_volume_data(
         frequency="d",
         adjustflag=adjustflag
     )
+
+
+def get_stock_info(stock_code: str, market: str = None) -> Tuple[Optional[Dict], Optional[str]]:
+    """
+    获取股票基本信息（名称+行业）（通过baostock接口）
+
+    参数:
+        stock_code: 股票代码（6 位数字，如 "600711"）
+        market: 市场代码（sh/sz），如果为空，则自动判断
+
+    返回:
+        ({'name': 股票名称, 'industry': 行业名称}, 错误信息)
+        如果获取失败，返回 (None, 错误信息)
+    """
+    from utils.helpers import get_market
+
+    # 获取市场代码
+    if market is None:
+        market = get_market(stock_code)
+
+    # 构造完整代码
+    code = f"{market}.{stock_code}"
+
+    # 登录 baostock
+    if not baostock_login():
+        return None, "登录 baostock 失败"
+
+    try:
+        # 查询行业分类
+        rs = bs.query_stock_industry(code)
+
+        if rs.error_code != '0':
+            baostock_logout()
+            return None, f"查询失败（{rs.error_code}）：{rs.error_msg}"
+
+        # 读取结果
+        while (rs.error_code == '0') & rs.next():
+            row_data = rs.get_row_data()
+            if len(row_data) >= 4:
+                # baostock query_stock_industry 返回格式（实际测试）：
+                # row_data[0]: 日期
+                # row_data[1]: 股票代码 (sz.002240)
+                # row_data[2]: 股票名称 (盛新锂能)
+                # row_data[3]: 行业名称 (C32有色金属冶炼和压延加工业)
+                # row_data[4]: 分类 (证监会行业分类)
+                stock_name = row_data[2].strip() if row_data[2] else None
+                industry = row_data[3].strip() if row_data[3] else None
+                if stock_name or industry:
+                    baostock_logout()
+                    return {
+                        'name': stock_name,
+                        'industry': industry
+                    }, None
+
+        baostock_logout()
+        return None, "未找到股票信息"
+
+    except Exception as e:
+        baostock_logout()
+        return None, f"查询异常：{str(e)}"
+
+
+def get_stock_industry(stock_code: str, market: str = None) -> Tuple[Optional[str], Optional[str]]:
+    """
+    获取股票所属行业分类（通过baostock接口）
+
+    参数:
+        stock_code: 股票代码（6 位数字，如 "600711"）
+        market: 市场代码（sh/sz），如果为空，则自动判断
+
+    返回:
+        (行业名称, 错误信息)
+        如果获取失败，返回 (None, 错误信息)
+    """
+    info, error = get_stock_info(stock_code, market)
+    if info and info.get('industry'):
+        return info['industry'], None
+    return None, error
+
+
+def get_stock_name(stock_code: str, market: str = None) -> Tuple[Optional[str], Optional[str]]:
+    """
+    获取股票名称（通过baostock接口）
+
+    参数:
+        stock_code: 股票代码（6 位数字，如 "600711"）
+        market: 市场代码（sh/sz），如果为空，则自动判断
+
+    返回:
+        (股票名称, 错误信息)
+        如果获取失败，返回 (None, 错误信息)
+    """
+    info, error = get_stock_info(stock_code, market)
+    if info and info.get('name'):
+        return info['name'], None
+    return None, error

@@ -108,11 +108,33 @@ def main():
     if args.code:
         # 如果用户指定了股票代码，使用用户指定的
         custom_stock = DEFAULT_STOCK.copy()
-        custom_stock["code"] = args.code
+        # 去除可能的市场前缀（sh.或sz.），只保留6位数字
+        clean_code = args.code.replace('sh.', '').replace('sz.', '').strip()
+        custom_stock["code"] = clean_code
         if args.name:
+            # 用户指定了名称，直接使用
             custom_stock["name"] = args.name
-        STOCK_LIST = [custom_stock]
-        print(f"📈 使用自定义股票：{custom_stock['name']}（{custom_stock['code']}）")
+            STOCK_LIST = [custom_stock]
+            print(f"📈 使用自定义股票：{custom_stock['name']}（{custom_stock['code']}）")
+        else:
+            # 用户没指定名称，尝试自动获取
+            print(f"🔍 正在自动获取股票名称：{clean_code}...")
+            from utils.baostock_utils import get_stock_name, get_stock_info
+            stock_name, error = get_stock_name(clean_code)
+            if stock_name:
+                # 获取成功，使用自动获取的名称
+                custom_stock["name"] = stock_name
+                # 同时尝试获取行业
+                info, _ = get_stock_info(clean_code)
+                if info and info.get('industry'):
+                    custom_stock["industry"] = info['industry']
+                STOCK_LIST = [custom_stock]
+                print(f"✅ 自动获取成功：{stock_name}（{clean_code}）")
+            else:
+                # 获取失败，使用代码作为名称
+                custom_stock["name"] = clean_code
+                STOCK_LIST = [custom_stock]
+                print(f"⚠️  自动获取股票名称失败：{error}，使用代码作为名称")
     else:
         print(f"📈 使用默认股票：{DEFAULT_STOCK['name']}（{DEFAULT_STOCK['code']}）")
 

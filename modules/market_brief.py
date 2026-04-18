@@ -97,68 +97,60 @@ def is_trading_day(date: datetime.date = None) -> Tuple[bool, str]:
 def get_global_indices() -> Optional[Dict]:
     """
     获取全球主要指数数据
+    使用单独接口获取：
+    - 美股三大指数：道琼斯、纳斯达克、标普500 -> stock_us_daily
+    - 港股恒生指数 -> stock_hk_daily
     返回：包含美股、港股等指数的字典
     """
     try:
         print("  正在获取全球指数数据...")
 
-        # 获取全球指数实时行情
-        global_df = fetch_with_retry(ak.index_global_spot_em)[0]
-
-        if global_df is None or global_df.empty:
-            return None
-
-        # 提取关键指数
         indices = {}
 
         # 美股三大指数
-        us_indices = {
-            "道琼斯工业指数": ["道琼斯", "DOW", "道指"],
-            "纳斯达克综合指数": ["纳斯达克", "NASDAQ", "纳指"],
-            "标普500指数": ["标普500", "S&P 500", "标普"]
-        }
+        # 使用 stock_us_daily 分别获取
+        us_config = [
+            {"name": "道琼斯工业指数", "symbol": ".DJI"},
+            {"name": "纳斯达克综合指数", "symbol": ".IXIC"},
+            {"name": "标普500指数", "symbol": ".INX"},
+        ]
 
-        for idx_name, keywords in us_indices.items():
-            # 搜索匹配的指数
-            for keyword in keywords:
-                match = global_df[global_df['名称'].str.contains(keyword, na=False)]
-                if not match.empty:
-                    row = match.iloc[0]
-                    indices[idx_name] = {
-                        "name": row['名称'],
-                        "code": row['代码'],
-                        "price": row['最新价'],
-                        "change": row['涨跌幅'],
-                        "volume": row['成交量']
+        for config in us_config:
+            try:
+                df = ak.stock_us_daily(symbol=config["symbol"])
+                if df is not None and not df.empty and len(df) >= 2:
+                    latest = df.iloc[-1]
+                    prev = df.iloc[-2]
+                    change = latest['close'] - prev['close']
+                    change_pct = change / prev['close'] * 100
+                    indices[config["name"]] = {
+                        "name": config["name"],
+                        "code": config["symbol"],
+                        "price": float(latest['close']),
+                        "change": round(float(change_pct), 2),
+                        "volume": int(latest['volume']),
                     }
-                    break
+            except Exception as e:
+                print(f"    ⚠️ 获取 {config['name']} 失败：{str(e)}")
+                continue
 
         # 港股恒生指数
-        hk_match = global_df[global_df['名称'].str.contains('恒生指数', na=False)]
-        if not hk_match.empty:
-            row = hk_match.iloc[0]
-            indices["恒生指数"] = {
-                "name": row['名称'],
-                "code": row['代码'],
-                "price": row['最新价'],
-                "change": row['涨跌幅'],
-                "volume": row['成交量']
-            }
-
-        # 如果获取的指数太少，尝试港股指数接口
-        if len(indices) < 2:
-            hk_index_df = fetch_with_retry(ak.stock_hk_index_spot_em)[0]
-            if hk_index_df is not None and not hk_index_df.empty:
-                hsi = hk_index_df[hk_index_df['指数名称'].str.contains('恒生指数', na=False)]
-                if not hsi.empty:
-                    row = hsi.iloc[0]
-                    indices["恒生指数"] = {
-                        "name": row['指数名称'],
-                        "code": row['指数代码'],
-                        "price": row['最新价'],
-                        "change": row['涨跌幅'],
-                        "volume": row['成交量']
-                    }
+        try:
+            df = ak.stock_hk_daily(symbol="HSI")
+            if df is not None and not df.empty and len(df) >= 2:
+                latest = df.iloc[-1]
+                prev = df.iloc[-2]
+                change = latest['close'] - prev['close']
+                change_pct = change / prev['close'] * 100
+                indices["恒生指数"] = {
+                    "name": "恒生指数",
+                    "code": "HSI",
+                    "price": float(latest['close']),
+                    "change": round(float(change_pct), 2),
+                    "volume": float(latest['volume']),
+                }
+        except Exception as e:
+            print(f"    ⚠️ 获取恒生指数失败：{str(e)}")
 
         return indices if indices else None
 
@@ -170,50 +162,33 @@ def get_global_indices() -> Optional[Dict]:
 def get_global_financial_news() -> Optional[str]:
     """
     获取海外金融新闻
+    使用 ak.futures_news_shmet 获取最新财经新闻
     返回：新闻内容字符串
     """
     try:
         print("  正在获取海外金融新闻...")
 
-        # 获取美股新闻（东方财富）
-        news_df, news_error = fetch_with_retry(
-            ak.stock_news_em,
-            symbol="美股"
-        )
+        # 获取最新财经新闻（上海金属网）
+        news_df = ak.futures_news_shmet()
 
         if news_df is None or news_df.empty:
             return None
 
-        # 拼接新闻内容（取前10条）
+        # 拼接新闻内容（取前10条最新）
         news_content = ""
         count = 0
         max_news = 10
 
-        for idx, row in news_df.iterrows():
-            if count >= max_news:
-                break
-
-            # 尝试获取标题和链接
-            if '新闻标题' in row and '发布时间' in row:
-                news_content += f"\n**{row['新闻标题']}**\n"
-                news_content += f"- 发布时间: {row['发布时间']}\n"
-                if '新闻链接' in row:
-                    news_content += f"- 链接: {row['新闻链接']}\n"
-                news_content += "\n"
-                count += 1
-            elif '标题' in row and '时间' in row:
-                news_content += f"\n**{row['标题']}**\n"
-                news_content += f"- 发布时间: {row['时间']}\n"
-                if '链接' in row:
-                    news_content += f"- 链接: {row['链接']}\n"
-                news_content += "\n"
-                count += 1
-            elif len(row) >= 2:
-                news_content += f"\n**{row.iloc[0]}**\n"
-                news_content += f"- 发布时间: {row.iloc[1]}\n"
-                if len(row) >= 3:
-                    news_content += f"- 链接: {row.iloc[2]}\n"
-                news_content += "\n"
+        # 按发布时间倒序，最新的在前
+        if '发布时间' in news_df.columns and '内容' in news_df.columns:
+            # 已经是按时间排序，取前10条
+            for idx, row in news_df.head(max_news).iterrows():
+                publish_time = row['发布时间']
+                content = row['内容']
+                # 截断过长内容
+                if len(content) > 100:
+                    content = content[:97] + "..."
+                news_content += f"- **{content}**\n  发布时间: {publish_time}\n\n"
                 count += 1
 
         return news_content if news_content else None
@@ -268,9 +243,9 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
                 change_sign = "📈" if change_val > 0 else "📉" if change_val < 0 else "➡️"
 
                 md_content += f"- **{idx_name}**\n"
-                md_content += f"  - 最新价: {idx_data['price']}\n"
+                md_content += f"  - 最新价: {idx_data['price']:.2f}\n"
                 md_content += f"  - 涨跌幅: {idx_data['change']}% {change_sign}\n"
-                md_content += f"  - 成交量: {idx_data.get('volume', 'N/A')}\n\n"
+                md_content += f"  - 成交量: {idx_data['volume']:,}\n\n"
 
         # 港股
         if "恒生指数" in global_indices:
@@ -280,9 +255,9 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
 
             md_content += "#### 🇭🇰 港股市场\n\n"
             md_content += f"- **{idx_data['name']}**\n"
-            md_content += f"  - 最新价: {idx_data['price']}\n"
+            md_content += f"  - 最新价: {idx_data['price']:.2f}\n"
             md_content += f"  - 涨跌幅: {idx_data['change']}% {change_sign}\n"
-            md_content += f"  - 成交量: {idx_data.get('volume', 'N/A')}\n\n"
+            md_content += f"  - 成交量: {idx_data['volume']:.0f}\n\n"
 
         # 市场分析
         md_content += "### 📊 市场分析\n\n"
@@ -291,7 +266,7 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
         # 分析整体走势
         changes = []
         for idx_name, idx_data in global_indices.items():
-            if idx_data['change']:
+            if idx_data['change'] is not None:
                 try:
                     changes.append(float(idx_data['change']))
                 except (ValueError, TypeError):
@@ -317,12 +292,12 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
 
     # 添加新闻内容
     md_content += "---\n\n"
-    md_content += "## 📰 海外金融新闻\n\n"
+    md_content += "## 📰 最新财经新闻\n\n"
 
     if financial_news:
         md_content += financial_news
     else:
-        md_content += "⚠️ 暂时无法获取海外金融新闻，可能是网络问题或数据源维护中。\n\n"
+        md_content += "⚠️ 暂时无法获取最新财经新闻，可能是网络问题或数据源维护中。\n\n"
 
     md_content += "\n---\n\n"
     md_content += "## 💡 温馨提示\n\n"
@@ -349,7 +324,7 @@ def generate_market_brief(target_date: datetime.date, reason: str) -> Tuple[str,
                 "code": idx_data['code'],
                 "price": idx_data['price'],
                 "change": idx_data['change'],
-                "volume": idx_data.get('volume', 'N/A')
+                "volume": idx_data['volume'],
             }
 
     return md_content, json_data
