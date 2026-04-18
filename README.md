@@ -4,6 +4,8 @@
 
 这是一个基于Python的股票量化交易策略分析工具，**已完全模块化重构**，支持独立运行和n8n工作流集成。
 
+本项目独立部署在 `hello-world` 目录，使用独立虚拟环境，**不干扰原项目**。
+
 ## 核心功能
 
 - 股票量化分析报告生成
@@ -14,12 +16,15 @@
 ## 项目结构
 
 ```
-/mnt/nas/stock/
+./
+├── run.sh                     # 快捷运行脚本（推荐使用）
 ├── main.py                    # 主程序入口
 ├── config.py                  # 配置文件（所有常量和参数）
 ├── requirements.txt           # 依赖包列表
 ├── README.md                  # 项目说明（本文件）
-├── run_log.txt                # 运行日志
+├── .gitignore                 # Git忽略配置
+├── venv/                      # Python虚拟环境（不提交到Git）
+├── data/                      # 输出目录（生成的报告保存在这里）
 ├── utils/                     # 工具模块
 │   ├── __init__.py
 │   ├── helpers.py            # 通用工具函数（日志、权限、编码器等）
@@ -38,62 +43,68 @@
 │       └── block.py          # 6. 板块维度
 ├── ai/                        # AI分析相关（保留兼容）
 │   └── analyze_with_ai.py
-├── ai_prompt.txt              # AI分析提示词（用于n8n配置）
-└── *.md / *.json              # 生成的报告文件（按日期命名）
+└── data/*.md / data/*.json    # 生成的报告文件（按日期命名）
 ```
 
 ## 快速开始
 
-### 安装依赖
+### 环境准备
+
+本项目已创建独立虚拟环境 `venv/`，依赖已安装完成。
+
+### 快速运行（推荐）
 
 ```bash
-cd /mnt/nas/stock
-pip install -r requirements.txt
+./run.sh
 ```
 
-### 运行主程序
+### 完整命令行运行
 
 ```bash
-cd /mnt/nas/stock
+source venv/bin/activate
 python main.py
 ```
 
 ### 强制运行（跳过休市判断）
 
 ```bash
+./run.sh --force
+# 或
 python main.py --force
 ```
 
 ### 仅生成JSON（用于n8n集成）
 
 ```bash
-python main.py --json-only
+./run.sh --json-only
 ```
 
 ### 指定日期运行
 
 ```bash
-python main.py --date 2026-04-10
+./run.sh --date 2026-04-10
 ```
 
 ### 指定股票代码
 
 ```bash
-python main.py --code 600711 --name 盛屯矿业
+./run.sh --code 600711 --name 盛屯矿业
 ```
 
 ## 输出文件
 
-### 交易日报告
-- `2026_04_10_主升浪策略分析报告.md` - Markdown格式
-- `2026_04_10_主升浪策略分析报告.json` - JSON格式
+所有报告输出到 `./data/` 目录：
 
-### 休市简报
-- `2026_04_12_休市简报.md` - Markdown格式
-- `2026_04_12_休市简报.json` - JSON格式
+### 交易日报告
+- `data/2026_04_10_主升浪策略分析报告.md` - Markdown格式
+- `data/2026_04_10_主升浪策略分析报告.json` - JSON格式
+
+### 休市简报（统一文件名规则）
+- `data/2026_04_12_主升浪策略分析报告.md` - 内容是休市简报
+- `data/2026_04_12_主升浪策略分析报告.json` - 内容是休市简报
 
 ### 日志文件
-- `run_log.txt` - 运行日志
+- `data/run_log.txt` - 运行日志
 
 ## 模块说明
 
@@ -247,10 +258,10 @@ json_data["analysis"]["custom"] = custom_json
 
 ```bash
 # 每个交易日15:30运行
-30 15 * * 1-5 cd /mnt/nas/stock && python main.py >> run_log.txt 2>&1
+30 15 * * 1-5 cd /home/xtremcer/nas/hello-world && ./run.sh >> data/run_log.txt 2>&1
 
-# 每天运行（自动判断是否为交易日）
-30 15 * * * cd /mnt/nas/stock && python main.py >> run_log.txt 2>&1
+# 每天运行（自动判断是否为交易日，数据不更新则生成休市简报）
+30 15 * * * cd /home/xtremcer/nas/hello-world && ./run.sh >> data/run_log.txt 2>&1
 ```
 
 ### systemd配置（可选）
@@ -264,11 +275,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=/mnt/nas/stock
-ExecStart=/usr/bin/python3 /mnt/nas/stock/main.py
-StandardOutput=append:/mnt/nas/stock/run_log.txt
-StandardError=append:/mnt/nas/stock/run_log.txt
+User=xtremcer
+WorkingDirectory=/home/xtremcer/nas/hello-world
+ExecStart=/home/xtremcer/nas/hello-world/run.sh
+StandardOutput=append:/home/xtremcer/nas/hello-world/data/run_log.txt
+StandardError=append:/home/xtremcer/nas/hello-world/data/run_log.txt
 
 [Install]
 WantedBy=multi-user.target

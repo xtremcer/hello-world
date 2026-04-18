@@ -12,153 +12,86 @@ from utils.fetch_utils import fetch_with_retry
 
 def is_trading_day(date: datetime.date = None) -> Tuple[bool, str]:
     """
-    通过baostock交易日历判断是否为交易日
+    判断是否为交易日
+    方法：
+    1. 首先通过周末判断，如果是周末直接判定为休市
+    2. 工作日通过数据验证（获取最新数据看日期是否匹配）来判断
     返回：(是否交易日, 原因说明)
-
-    判断逻辑：
-    - 使用baostock的交易日历接口获取所有交易日
-    - 检查目标日期是否在交易日历中
-    - 在 = 交易日，不在 = 休市
     """
     if date is None:
         date = datetime.date.today()
 
     target_date_str = date.strftime("%Y-%m-%d")
 
+    # 方法0：首先判断是否是周末，周末直接判定为休市
+    weekday = date.weekday()
+    if weekday >= 5:  # 5=周六, 6=周日
+        return False, f"休市（周末：星期{weekday+1}）"
+
+    # 方法1：尝试通过 baostock 获取数据验证最新日期
+    # 说明：baostock v0.9.1 没有 query_trade_date 接口，所以改用数据验证
     try:
-        print(f"  正在获取交易日历数据以判断{target_date_str}是否为交易日...")
+        print(f"  💡 {target_date_str} 是工作日，正在通过数据验证是否为交易日...")
+        import baostock as bs
+        from utils.baostock_utils import get_trend_data
 
-        # 方法1：使用baostock交易日历接口（推荐）
-        try:
-            import baostock as bs
+        # 用上证指数验证（上证指数代码 000001）
+        df, error = get_trend_data("000001", "sh")
 
-            # 登录baostock
-            lg = bs.login()
-            if lg.error_code != '0':
-                raise Exception(f"baostock登录失败：{lg.error_msg}")
+        if df is not None and not df.empty:
+            latest_date = df.iloc[-1]['date']
+            # latest_date 是 datetime 对象
+            if hasattr(latest_date, 'date'):
+                latest_date = latest_date.date()
+            else:
+                latest_date = datetime.date.fromisoformat(str(latest_date).split()[0])
 
-            # 获取交易日历（query_trade_date接口）
-            # 参数说明：year=年, quarter=季度
-            year = date.year
-            quarter = (date.month - 1) // 3 + 1
+            if latest_date == date:
+                return True, f"交易日（baostock最新数据日期匹配：{latest_date}）"
+            else:
+                return False, f"休市（数据未更新：最新日期{latest_date} ≠ 目标日期{target_date}）"
+        else:
+            raise Exception(f"baostock获取数据失败：{error}")
 
-            rs = bs.query_trade_date(
-                year=str(year),
-                quarter=str(quarter)
-            )
+    except Exception as e:
+        print(f"  ⚠️ baostock数据验证失败：{str(e)}，尝试使用备用方法...")
 
-            if rs.error_code != '0':
-                raise Exception(f"获取交易日历失败：{rs.error_msg}")
+    # 备用方法1：使用akshare交易日历接口
+    try:
+        print(f"  💡 使用备用方法：获取akshare交易日历...")
+        import akshare as ak
+        import pandas as pd
 
-            # 读取交易日数据
-            trade_dates = []
-            while (rs.error_code == '0') & rs.next():
-                row_data = rs.get_row_data()
-                if len(row_data) >= 3:  # calendar_date, is_trading_day, current_quarter
-                    trade_date_str = row_data[0]
-                    is_trading = row_data[1]  # '1'表示交易日，'0'表示休市
-                    if is_trading == '1':
-                        trade_dates.append(trade_date_str)
+        # 获取上海证券交易所交易日历
+        trade_date_df = ak.tool_trade_date_hist_sina()
 
-            # 登出baostock
-            bs.logout()
-
-            if not trade_dates:
-                raise Exception("交易日历数据为空")
+        if trade_date_df is not None and not trade_date_df.empty:
+            # 将日期列转换为date对象
+            if 'trade_date' in trade_date_df.columns:
+                trade_date_df['trade_date'] = pd.to_datetime(trade_date_df['trade_date']).dt.date
+                trading_dates = set(trade_date_df['trade_date'].tolist())
+            elif 'date' in trade_date_df.columns:
+                trade_date_df['date'] = pd.to_datetime(trade_date_df['date']).dt.date
+                trading_dates = set(trade_date_df['date'].tolist())
+            else:
+                # 使用第一列作为日期列
+                first_col = trade_date_df.columns[0]
+                trade_date_df[first_col] = pd.to_datetime(trade_date_df[first_col]).dt.date
+                trading_dates = set(trade_date_df[first_col].tolist())
 
             # 检查目标日期是否在交易日历中
-            if target_date_str in trade_dates:
-                return True, f"交易日（baostock交易日历包含该日期）"
+            if date in trading_dates:
+                return True, f"交易日（akshare交易日历包含该日期）"
             else:
-                return False, f"休市（baostock交易日历不包含该日期：{target_date_str}）"
-
-        except Exception as e:
-            print(f"  ⚠️ baostock交易日历接口调用失败：{str(e)}，尝试使用备用方法...")
-            raise e
-
-    except Exception as e:
-        # 备用方法1：使用akshare交易日历接口
-        try:
-            print(f"  💡 使用备用方法1：获取akshare交易日历...")
-            import akshare as ak
-
-            # 获取上海证券交易所交易日历
-            trade_date_df = ak.tool_trade_date_hist_sina()
-
-            if trade_date_df is not None and not trade_date_df.empty:
-                # 将日期列转换为date对象
-                import pandas as pd
-
-                # 假设列名为 trade_date
-                if 'trade_date' in trade_date_df.columns:
-                    trade_date_df['trade_date'] = pd.to_datetime(trade_date_df['trade_date']).dt.date
-                    trading_dates = set(trade_date_df['trade_date'].tolist())
-                elif 'date' in trade_date_df.columns:
-                    trade_date_df['date'] = pd.to_datetime(trade_date_df['date']).dt.date
-                    trading_dates = set(trade_date_df['date'].tolist())
-                else:
-                    # 使用第一列作为日期列
-                    first_col = trade_date_df.columns[0]
-                    trade_date_df[first_col] = pd.to_datetime(trade_date_df[first_col]).dt.date
-                    trading_dates = set(trade_date_df[first_col].tolist())
-
-                # 检查目标日期是否在交易日历中
-                if date in trading_dates:
-                    return True, f"交易日（akshare交易日历包含该日期）"
-                else:
-                    return False, f"休市（akshare交易日历不包含该日期：{target_date_str}）"
-            else:
-                raise Exception("交易日历数据为空")
-        except Exception as e:
-            print(f"  ⚠️ 备用方法1也失败：{str(e)}，尝试备用方法2...")
-            raise e
-
-    except Exception as e:
-        # 备用方法2：尝试获取实时数据判断
-        try:
-            print(f"  💡 使用备用方法2：获取上证指数实时数据...")
-            import akshare as ak
-
-            # 尝试获取实时指数数据
-            index_df = fetch_with_retry(ak.index_zh_a_spot_em)[0]
-
-            if index_df is not None and not index_df.empty:
-                # 获取上证指数（000001）的最新数据
-                sh_index = index_df[index_df['代码'] == '000001']
-
-                if not sh_index.empty:
-                    # 如果能获取到实时数据，说明当前是交易时间
-                    current_hour = datetime.datetime.now().hour
-
-                    # 判断当前时间是否在交易时段
-                    # A股交易时间：9:30-11:30, 13:00-15:00
-                    is_trading_time = (
-                        (9 <= current_hour < 12) or (13 <= current_hour < 15)
-                    )
-
-                    if is_trading_time:
-                        return True, f"交易日（当前处于交易时段）"
-                    else:
-                        # 非交易时段，判断是否为交易日（排除周末）
-                        weekday = date.weekday()
-                        if weekday < 5:  # 0-4表示周一到周五
-                            return True, f"交易日（工作日，非周末）"
-                        else:
-                            return False, f"休市（周末）"
-                else:
-                    raise Exception("无法找到上证指数数据")
-
-        except Exception as backup_error:
-            print(f"  ⚠️ 备用方法2也失败：{str(backup_error)}")
-
-        # 所有方法都失败，返回保守判断
-        weekday = date.weekday()
-        if weekday < 5:  # 0-4表示周一到周五
-            print(f"  ⚠️ 无法准确判断，按工作日默认为交易日")
-            return True, f"交易日（工作日，默认判断）"
+                return False, f"休市（akshare交易日历不包含该日期：{target_date_str}）"
         else:
-            print(f"  ⚠️ 无法准确判断，按周末默认为休市")
-            return False, f"休市（周末，默认判断）"
+            raise Exception("交易日历数据为空")
+    except Exception as e:
+        print(f"  ⚠️ 备用方法也失败：{str(e)}，使用默认判断")
+
+    # 所有方法都失败，工作日默认判断为交易日
+    print(f"  ⚠️ 无法验证，按工作日默认判定为交易日")
+    return True, f"交易日（工作日，默认判断）"
 
 
 def get_global_indices() -> Optional[Dict]:
